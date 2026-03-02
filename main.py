@@ -48,7 +48,7 @@ def summarize_with_ai(news_list):
 
     headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json"}
     data = {
-        "model": "deepseek-chat",
+        "model": "gemini-1.5-flash",
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.5
     }
