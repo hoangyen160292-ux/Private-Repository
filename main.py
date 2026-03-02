@@ -6,24 +6,22 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.header import Header
 
-# --- 1. 配置区 (API Key 已硬编码) ---
+# --- 1. 配置区 ---
 AI_API_KEY = "AIzaSyCi9wRq-FHyUvLNLuhxLFdj8MVzjp0Rj3I"
-# 其他配置建议仍通过 GitHub Secrets 读取，确保安全
 SERPER_API_KEY = os.getenv("SERPER_API_KEY", "").strip()
 MAIL_USER = os.getenv("MAIL_USER", "").strip()
 MAIL_PASS = os.getenv("MAIL_PASS", "").strip()
 
-# 业务关键词：江西数字发改、数字化转型
+# 针对思创数码业务定制的关键词
 SEARCH_QUERY = "数字发改 政策 数字化转型 数据要素 江西省 招标公示"
 RECEIVERS = [MAIL_USER] 
 
 def get_actual_model():
-    """诊断函数：确认 Key 的实时模型权限"""
+    """检测当前 Key 可用的模型权限"""
     url = f"https://generativelanguage.googleapis.com/v1beta/models?key={AI_API_KEY}"
     try:
         res = requests.get(url, timeout=10)
         data = res.json()
-        # 提取有 generateContent 权限的模型
         models = [m['name'].split('/')[-1] for m in data.get('models', []) if 'generateContent' in m.get('supportedMethods', [])]
         print(f">>> 诊断：当前模型权限列表: {models}")
         
@@ -35,7 +33,7 @@ def get_actual_model():
         return None
 
 def get_search_results():
-    """步骤 1: 获取搜素结果"""
+    """获取全网数字发改资讯"""
     print("正在搜集江西及全国数字发改资讯...")
     url = "https://google.serper.dev/search"
     headers = {'X-API-KEY': SERPER_API_KEY, 'Content-Type': 'application/json'}
@@ -48,12 +46,12 @@ def get_search_results():
         return []
 
 def summarize_with_ai(news_list):
-    """步骤 2: 调用 AI 生成业务内参"""
+    """调用 Gemini 生成内参内容"""
     if not news_list: return None
     
     model_name = get_actual_model()
     if not model_name:
-        print(">>> 严重错误：诊断列表仍为空。请稍等几分钟，确保 Google Cloud 的‘不限制密钥’设置生效。")
+        print(">>> 严重错误：诊断列表仍为空。请确认 Google Cloud 限制已保存并生效。")
         return None
     
     print(f">>> 选定可用模型: {model_name}")
@@ -68,14 +66,14 @@ def summarize_with_ai(news_list):
             print(">>> AI 分析总结成功！")
             return res_json['candidates'][0]['content']['parts'][0]['text']
         else:
-            print(f">>> AI 响应详情: {json.dumps(res_json)}")
+            print(f">>> AI 响应异常详情: {json.dumps(res_json)}")
             return None
     except Exception as e:
         print(f">>> AI 调用失败: {e}")
         return None
 
 def send_email(html_body):
-    """步骤 3: 发送结果到邮箱"""
+    """发送 HTML 简报邮件"""
     if not html_body: return
     print("正在准备发送简报邮件...")
     today = datetime.now().strftime('%Y-%m-%d')
@@ -90,4 +88,15 @@ def send_email(html_body):
         smtp = smtplib.SMTP_SSL("smtp.qq.com", 465)
         smtp.login(MAIL_USER, MAIL_PASS)
         smtp.sendmail(MAIL_USER, RECEIVERS, msg.as_string())
-        print("Done:
+        print("Done: 简报已成功送达！")
+    except Exception as e:
+        print(f"邮件发送环节出错: {e}")
+
+if __name__ == "__main__":
+    news = get_search_results()
+    if news:
+        report = summarize_with_ai(news)
+        if report:
+            send_email(report)
+    else:
+        print("今日暂无符合关键词的新资讯更新。")
