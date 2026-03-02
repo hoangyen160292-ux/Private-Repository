@@ -6,13 +6,13 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.header import Header
 
-# --- 1. 核心配置 ---
-SERPER_API_KEY = os.getenv("SERPER_API_KEY")
-AI_API_KEY = os.getenv("AI_API_KEY")
-MAIL_USER = os.getenv("MAIL_USER")
-MAIL_PASS = os.getenv("MAIL_PASS")
+# --- 1. 环境与配置检查 ---
+SERPER_API_KEY = os.getenv("SERPER_API_KEY", "").strip()
+AI_API_KEY = os.getenv("AI_API_KEY", "").strip()
+MAIL_USER = os.getenv("MAIL_USER", "").strip()
+MAIL_PASS = os.getenv("MAIL_PASS", "").strip()
 
-# 针对思创数码业务优化的关键词
+# 关键词针对思创数码业务优化
 SEARCH_QUERY = "数字发改 政策 数字化转型 数据要素 江西省 招标公示"
 RECEIVERS = [MAIL_USER] 
 
@@ -25,61 +25,55 @@ def get_search_results():
         response = requests.post(url, headers=headers, data=payload)
         return response.json().get('organic', [])
     except Exception as e:
-        print(f"搜索失败: {e}")
+        print(f"搜索环节失败: {e}")
         return []
 
 def summarize_with_ai(news_list):
-    print("正在通过 Gemini v1beta 接口进行汇总...")
+    """双模型备份机制，解决 404 报错"""
     if not news_list: return None
     
-    # 提取前8条新闻
     raw_text = "\n".join([f"标题: {n['title']}\n摘要: {n.get('snippet','')}\n链接: {n['link']}" for n in news_list[:8]])
-    
-    prompt = f"""你是一个数字发改专家。请将以下资讯整理成 HTML 简报。
-    作为思创数码(Thinvent)的一员，请在末尾为品牌市场部提供一条关于35周年的业务建议。
-    原始数据：{raw_text}"""
+    prompt = f"你是一个数字发改专家。请将以下资讯整理成 HTML 简报。作为思创数码(Thinvent)的一员，请在末尾为品牌市场部提供一条关于35周年的业务建议。原始数据：{raw_text}"
 
-    # --- 修复核心：使用 v1beta 路径并确保 URL 绝对纯净 ---
-    # 这里的 URL 不允许有任何空格或方括号
-    base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
-    full_url = f"{base_url}?key={AI_API_KEY}"
+    # 依次尝试的模型列表
+    models = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
     
-    payload = {
-        "contents": [{
-            "parts": [{"text": prompt}]
-        }]
-    }
-    
-    try:
-        # 使用 .strip() 彻底清理可能存在的隐形换行符
-        response = requests.post(full_url.strip(), json=payload, timeout=30)
-        res_json = response.json()
+    for model_name in models:
+        print(f"正在尝试使用 {model_name} 进行分析...")
+        # 使用 v1 稳定版接口
+        api_url = f"https://generativelanguage.googleapis.com/v1/models/{model_name}:generateContent?key={AI_API_KEY}"
+        payload = {"contents": [{"parts": [{"text": prompt}]}]}
         
-        if 'candidates' in res_json:
-            return res_json['candidates'][0]['content']['parts'][0]['text']
-        else:
-            # 打印完整的错误响应，方便我们精准排查
-            print(f"AI 响应内容详情: {json.dumps(res_json, indent=2)}")
-            return None
-    except Exception as e:
-        print(f"网络请求失败: {e}")
-        return None
+        try:
+            response = requests.post(api_url, json=payload, timeout=30)
+            res_json = response.json()
+            
+            if 'candidates' in res_json:
+                print(f"成功！已通过 {model_name} 生成内容。")
+                return res_json['candidates'][0]['content']['parts'][0]['text']
+            else:
+                print(f"模型 {model_name} 反馈异常，准备尝试下一个。详情: {res_json.get('error', {}).get('message', '未知错误')}")
+        except Exception as e:
+            print(f"请求 {model_name} 失败: {e}")
+            
+    print("所有可用模型均无法调用，请检查 API Key 权限。")
+    return None
 
 def send_email(html_body):
     if not html_body: return
-    print("正在发送内参邮件...")
+    print("正在准备发送邮件...")
     today = datetime.now().strftime('%Y-%m-%d')
-    # 简单的外观封装
-    email_content = f"""
-    <div style="font-family:sans-serif; max-width:600px; margin:auto; border:1px solid #eee; padding:20px;">
-        <h2 style="color:#1a73e8;">数字发改 · 每日内参</h2>
-        <hr>
+    full_html = f"""
+    <div style="font-family:Arial; max-width:600px; margin:auto; border:1px solid #eee; padding:20px; border-radius:10px;">
+        <h2 style="color:#1a73e8; border-bottom:2px solid #1a73e8; padding-bottom:10px;">数字发改 · 每日决策内参</h2>
         {html_body}
-        <p style="font-size:12px; color:#999; margin-top:30px;">思创数码品牌市场部 · 自动化推送</p>
+        <div style="margin-top:30px; padding-top:10px; border-top:1px solid #eee; font-size:12px; color:#999;">
+            思创数码品牌市场部 · 35周年自动化内参系统
+        </div>
     </div>
     """
     
-    msg = MIMEText(email_content, 'html', 'utf-8')
+    msg = MIMEText(full_html, 'html', 'utf-8')
     msg['From'] = f"资讯助手 <{MAIL_USER}>"
     msg['To'] = ",".join(RECEIVERS)
     msg['Subject'] = Header(f"【每日内参】数字发改业务动态 ({today})", 'utf-8')
@@ -88,18 +82,17 @@ def send_email(html_body):
         smtp = smtplib.SMTP_SSL("smtp.qq.com", 465)
         smtp.login(MAIL_USER, MAIL_PASS)
         smtp.sendmail(MAIL_USER, RECEIVERS, msg.as_string())
-        print("Done: 邮件已成功送达！")
+        print("Done: 简报已成功送达您的邮箱！")
     except Exception as e:
-        print(f"邮件发送环节出错: {e}")
+        print(f"邮件发送失败: {e}")
 
 if __name__ == "__main__":
-    # 安全检查
-    if not all([SERPER_API_KEY, AI_API_KEY, MAIL_USER, MAIL_PASS]):
-        print("错误：Secrets 变量缺失，请检查 GitHub 设置。")
+    if not AI_API_KEY or len(AI_API_KEY) < 10:
+        print("错误：AI_API_KEY 读取失败，请检查 GitHub Secrets 配置。")
     else:
         news = get_search_results()
         if news:
             report = summarize_with_ai(news)
             send_email(report)
         else:
-            print("今日未发现符合条件的江西数字发改资讯。")
+            print("今日暂无符合条件的资讯更新。")
