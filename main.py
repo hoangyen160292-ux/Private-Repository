@@ -59,7 +59,7 @@ def send_email(html_body):
     today = datetime.now().strftime('%Y-%m-%d')
     mail_user = os.getenv("MAIL_USER")
     mail_pass = os.getenv("MAIL_PASS")
-    receivers = ["target_email@example.com"] # 替换为你的批量邮箱列表
+    receivers = ["373790659@qq.com"] # 替换为你的批量邮箱列表
 
     # 注入 HTML 模板头尾（见下文）
     full_html = get_full_html_template(today, html_body)
