@@ -14,7 +14,7 @@ MAIL_PASS = os.getenv("MAIL_PASS")
 
 # 针对思创数码业务优化的搜索关键词
 SEARCH_QUERY = "数字发改 政策 数字化转型 数据要素 江西省 招标公示"
-# 默认发给自己（若要发给多人可写成 ["a@qq.com", "b@qq.com"]）
+# 默认发给自己（若要发给多人可写成 ["381248017@qq.com", "b@qq.com"]）
 RECEIVERS = [MAIL_USER] 
 
 def get_search_results():
