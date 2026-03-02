@@ -23,10 +23,10 @@ jobs:
           pip install requests
 
       - name: Run News Bot
-        # 这一部分最关键：它把你在 Settings 里存的密钥交给 Python 脚本使用
+        # 注意：这里必须是两个大括号 ${{ }}
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           SERPER_API_KEY: ${{ secrets.SERPER_API_KEY }}
           MAIL_USER: ${{ secrets.MAIL_USER }}
           MAIL_PASS: ${{ secrets.MAIL_PASS }}
-        run: python main.pypython main.py
+        run: python main.py
