@@ -10,9 +10,10 @@ from email.header import Header
 SERPER_API_KEY = os.getenv("SERPER_API_KEY") 
 SEARCH_QUERY = "数字发改 政策 数字化转型 数据要素 江西省 招标公示"
 
-# --- 2. AI 配置 (支持 DeepSeek, Gemini, GPT-4o) ---
+# --- 2. AI 配置 (适配 Google AI Studio) ---
 AI_API_KEY = os.getenv("AI_API_KEY")
-AI_BASE_URL = "https://api.deepseek.com" # 或 Gemini 对应的 Endpoint
+# 使用 Gemini 的 OpenAI 兼容模式地址
+AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
 
 def get_search_results():
     """从全网获取最新的行业资讯"""
@@ -59,7 +60,7 @@ def send_email(html_body):
     today = datetime.now().strftime('%Y-%m-%d')
     mail_user = os.getenv("MAIL_USER")
     mail_pass = os.getenv("MAIL_PASS")
-    receivers = ["373790659@qq.com"] # 替换为你的批量邮箱列表
+    receivers = ["381248017@qq.com"] # 替换为你的批量邮箱列表
 
     # 注入 HTML 模板头尾（见下文）
     full_html = get_full_html_template(today, html_body)
