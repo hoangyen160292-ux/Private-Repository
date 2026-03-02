@@ -6,85 +6,78 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.header import Header
 
-# --- 1. 搜索配置 (推荐使用 Serper.dev，每月2500次免费，极其稳定) ---
+# --- 1. 配置区 ---
 SERPER_API_KEY = os.getenv("SERPER_API_KEY") 
-SEARCH_QUERY = "数字发改 政策 数字化转型 数据要素 江西省 招标公示"
-
-# --- 2. AI 配置 (适配 Google AI Studio) ---
 AI_API_KEY = os.getenv("AI_API_KEY")
-# 使用 Gemini 的 OpenAI 兼容模式地址
-AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+
+# 重点：修改为 Gemini 的 OpenAI 兼容接口地址
+AI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai" 
+SEARCH_QUERY = "数字发改 政策 数字化转型 数据要素 江西省 招标公示"
+# 请在这里填入你的收件人邮箱
+RECEIVERS = ["381248017@qq.com"] 
 
 def get_search_results():
-    """从全网获取最新的行业资讯"""
+    print("正在搜集数字发改相关资讯...")
     url = "https://google.serper.dev/search"
-    payload = json.dumps({
-        "q": SEARCH_QUERY,
-        "gl": "cn",
-        "hl": "zh-cn",
-        "tbs": "qdr:d" # 仅限过去24小时
-    })
-    headers = {
-        'X-API-KEY': SERPER_API_KEY,
-        'Content-Type': 'application/json'
-    }
-    response = requests.request("POST", url, headers=headers, data=payload)
-    return response.json().get('organic', [])
+    payload = json.dumps({"q": SEARCH_QUERY, "gl": "cn", "hl": "zh-cn", "tbs": "qdr:d"})
+    headers = {'X-API-KEY': SERPER_API_KEY, 'Content-Type': 'application/json'}
+    try:
+        response = requests.post(url, headers=headers, data=payload)
+        return response.json().get('organic', [])
+    except Exception as e:
+        print(f"搜索失败: {e}")
+        return []
 
 def summarize_with_ai(news_list):
-    """调用AI对搜索结果进行分类、总结和点评"""
-    # 将搜索结果拼接成文本
-    raw_text = "\n".join([f"标题: {n['title']}\n内容: {n.get('snippet','')}\n链接: {n['link']}" for n in news_list[:8]])
+    print("正在调用 Gemini 进行分析汇总...")
+    raw_text = "\n".join([f"标题: {n['title']}\n摘要: {n.get('snippet','')}\n链接: {n['link']}" for n in news_list[:8]])
     
-    prompt = f"""
-    你是一个数字发改行业的资深分析师。请将以下搜索到的原始资讯整理成一份精美的《数字发改每日简报》。
-    要求：
-    1. 分为：[政策导向]、[地方实践]、[行业动态] 三个板块。
-    2. 每条资讯包含标题、100字以内的核心摘要。
-    3. 在每条后面附带一个【AI点评】，分析该资讯对业务的潜在影响。
-    4. 使用HTML格式输出，不要包含 ```html 标签。
-    原始数据：{raw_text}
-    """
+    prompt = f"你是一个数字发改专家。请将以下资讯整理成 HTML 简报（包含政策导向、地方实践、行业动态），并附带业务点评。原始数据：{raw_text}"
 
     headers = {"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json"}
     data = {
-        "model": "gemini-1.5-flash",
+        "model": "gemini-1.5-flash", # 使用 Gemini Flash 模型
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.5
     }
-    response = requests.post(f"{AI_BASE_URL}/chat/completions", headers=headers, json=data)
-    return response.json()['choices'][0]['message']['content']
+    
+    try:
+        response = requests.post(f"{AI_BASE_URL}/chat/completions", headers=headers, json=data)
+        res_json = response.json()
+        
+        # 增加安全检查，防止列表索引报错
+        if 'choices' in res_json:
+            return res_json['choices'][0]['message']['content']
+        else:
+            print(f"AI 响应异常: {res_json}")
+            return None
+    except Exception as e:
+        print(f"AI 总结失败: {e}")
+        return None
 
-def send_email(html_body):
-    """发送邮件"""
-    today = datetime.now().strftime('%Y-%m-%d')
+def send_email(html_content):
+    if not html_content: return
+    print("正在发送邮件...")
     mail_user = os.getenv("MAIL_USER")
     mail_pass = os.getenv("MAIL_PASS")
-    receivers = ["381248017@qq.com"] # 替换为你的批量邮箱列表
-
-    # 注入 HTML 模板头尾（见下文）
-    full_html = get_full_html_template(today, html_body)
-
-    message = MIMEText(full_html, 'html', 'utf-8')
-    message['From'] = f"发改资讯助手 <{mail_user}>"
-    message['To'] = ",".join(receivers)
-    message['Subject'] = Header(f"【数字发改】每日业务动态简报 ({today})", 'utf-8')
+    
+    msg = MIMEText(html_content, 'html', 'utf-8')
+    msg['From'] = mail_user
+    msg['To'] = ",".join(RECEIVERS)
+    msg['Subject'] = Header(f"【数字发改】每日业务动态 ({datetime.now().strftime('%Y-%m-%d')})", 'utf-8')
 
     try:
-        smtp = smtplib.SMTP_SSL("smtp.qq.com", 465)
+        smtp = smtplib.SMTP_SSL("smtp.qq.com", 465) # 这里以QQ邮箱为例
         smtp.login(mail_user, mail_pass)
-        smtp.sendmail(mail_user, receivers, message.as_string())
+        smtp.sendmail(mail_user, RECEIVERS, msg.as_string())
         print("Done: 简报已发送成功")
     except Exception as e:
-        print(f"Error: {e}")
-
-# 这里放入 HTML 模板函数（下文提供）
-def get_full_html_template(date_str, content):
-    # 拼接下方的 HTML 代码...
-    pass
+        print(f"邮件发送失败: {e}")
 
 if __name__ == "__main__":
     news = get_search_results()
     if news:
         report = summarize_with_ai(news)
         send_email(report)
+    else:
+        print("今日无相关业务资讯更新。")
